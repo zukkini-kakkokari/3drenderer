@@ -39,7 +39,7 @@ bool initialize_window(void) {
     fprintf(stderr, "Error creating SDL renderer.\n");
     return false;
   }
-  SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
+  // SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
 
   return true; 
 }
@@ -59,8 +59,8 @@ void draw_pixel(int x, int y, uint32_t color) {
 }
 
 void draw_rect(int x, int y, int width, int height, uint32_t color) {
-  for (int y1 = y; y1 < height; y1++) {
-    for (int x1 = x; x1 < width; x1++) {
+  for (int y1 = y; y1 < y + height; y1++) {
+    for (int x1 = x; x1 < x + width; x1++) {
       draw_pixel(x1, y1, color);
     } 
   }

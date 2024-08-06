@@ -1,6 +1,8 @@
+#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <SDL2/SDL.h>
+#include "SDL2/SDL_render.h"
 #include "display.h"
 #include "vector.h"
 
@@ -9,7 +11,9 @@
 vec3_t cube_points[N_POINTS];
 vec2_t projected_points[N_POINTS];
 
-float fov_factor = 128;
+vec3_t camera_position = { .x = 0, .y = 0, .z = -5 };
+
+float fov_factor = 1200;
 
 bool is_running = false;
 
@@ -58,8 +62,8 @@ void process_input(void) {
 // Functiont that receives a 3D vector and returns a projected 2D point
 vec2_t project(vec3_t point) {
   vec2_t projected_point = {
-    .x = (fov_factor * point.x),
-    .y = (fov_factor * point.y),
+    .x = (fov_factor * point.x) / point.z,
+    .y = (fov_factor * point.y) / point.z,
   };
   return projected_point;
 }
@@ -67,6 +71,9 @@ vec2_t project(vec3_t point) {
 void update(void) {
   for (int i = 0; i < N_POINTS; i++) {
     vec3_t point = cube_points[i];
+
+    // Move the points away from the camera
+    point.z -= camera_position.z;
 
     // Project the current point
     vec2_t projected_point = project(point);
@@ -82,10 +89,10 @@ void render(void) {
   for (int i = 0; i < N_POINTS; i++) {
     vec2_t projected_point = projected_points[i];
     draw_rect(
-      projected_point.x + 150, 
-      projected_point.y + 150,
-      4,
-      4,
+      projected_point.x + (window_width / 2.0), 
+      projected_point.y + (window_height / 2.0),
+      8,
+      8,
       0xFFFFFF00
     );
   }
