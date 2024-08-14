@@ -2,6 +2,11 @@
 #include <stdio.h>
 #include "vector.h"
 
+// Debug
+void print_vec3_t(vec3_t v) {
+  printf("x: %f, y: %f, z: %f\n", v.x, v.y, v.z);
+}
+
 // Implementations of Vector 2D function
 float vec2_length(vec2_t v) {
   return sqrt(v.x * v.x + v.y * v.y);  
@@ -136,7 +141,14 @@ vec3_t vec3_rotate_z(vec3_t v, float angle) {
   return rotated_vector;
 }
 
-// Debug
-void print_vec3_t(vec3_t v) {
-  printf("x: %f, y: %f, z: %f\n", v.x, v.y, v.z);
+// Vector conversions functions
+vec4_t vec4_from_vec3(vec3_t v) {
+  vec4_t result = { v.x, v.y, v.z, 1.0 };
+  return result;
 }
+
+vec3_t vec3_from_vec4(vec4_t v) {
+  vec3_t result = { v.x, v.y, v.z };
+  return result;
+}
+
