@@ -38,8 +38,9 @@ void setup(void) {
     render_method = RENDER_TEXTURED_WIRE;
     cull_method = CULL_BACKFACE;
 
-    // Allocate the required memory in bytes to hold the color buffer
+    // Allocate the required memory in bytes to hold the color buffer and z-buffer
     color_buffer = (uint32_t*)malloc(sizeof(uint32_t) * window_width * window_height);
+    z_buffer = (float*)malloc(sizeof(float) * window_width * window_height);
 
     // Creating a SDL texture that is used to display the color buffer
     color_buffer_texture = SDL_CreateTexture(
@@ -59,10 +60,10 @@ void setup(void) {
 
     // Loads the vertex and face values for the mesh data structure
     // load_cube_mesh_data();
-    load_obj_file_data("./assets/cube.obj");
+    load_obj_file_data("./assets/crab.obj");
 
     // Load the texture information from an external PNG file
-    load_png_texture_data("./assets/cube.png");
+    load_png_texture_data("./assets/crab.png");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -116,9 +117,9 @@ void update(void) {
     triangles_to_render = NULL;
 
     // Change the mesh scale, rotation, and translation values per animation frame
-    // mesh.rotation.x += 0.000;
+    mesh.rotation.x += 0.02;
     mesh.rotation.y += 0.02;
-    // mesh.rotation.z += 0.000;
+    mesh.rotation.z += 0.02;
     mesh.translation.z = 5.0;
 
     // Create scale, rotation, and translation matrices that will be used to multiply the mesh vertices
@@ -134,9 +135,9 @@ void update(void) {
         face_t mesh_face = mesh.faces[i];
 
         vec3_t face_vertices[3];
-        face_vertices[0] = mesh.vertices[mesh_face.a - 1];
-        face_vertices[1] = mesh.vertices[mesh_face.b - 1];
-        face_vertices[2] = mesh.vertices[mesh_face.c - 1];
+        face_vertices[0] = mesh.vertices[mesh_face.a];
+        face_vertices[1] = mesh.vertices[mesh_face.b];
+        face_vertices[2] = mesh.vertices[mesh_face.c];
 
         vec4_t transformed_vertices[3];
 
@@ -308,6 +309,7 @@ void render(void) {
     render_color_buffer();
 
     clear_color_buffer(0xFF000000);
+    clear_z_buffer();
 
     SDL_RenderPresent(renderer);
 }
@@ -317,6 +319,7 @@ void render(void) {
 ///////////////////////////////////////////////////////////////////////////////
 void free_resources(void) {
     free(color_buffer);
+    free(z_buffer);
     upng_free(png_texture);
     array_free(mesh.faces);
     array_free(mesh.vertices);
