@@ -1,8 +1,9 @@
-#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <SDL2/SDL.h>
+#include "SDL2/SDL_keycode.h"
 #include "array.h"
+#include "clipping.h"
 #include "display.h"
 #include "upng.h"
 #include "vector.h"
@@ -11,11 +12,14 @@
 #include "triangle.h"
 #include "texture.h"
 #include "mesh.h"
+#include "camera.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Array of triangles that should be rendered frame by frame
 ///////////////////////////////////////////////////////////////////////////////
-triangle_t* triangles_to_render = NULL;
+#define MAX_TRIANGLES_PER_MESH 10000
+triangle_t triangles_to_render[MAX_TRIANGLES_PER_MESH];
+int num_triangles_to_render = 0;
 
 int render_method = RENDER_WIRE;
 int cull_method = CULL_BACKFACE;
@@ -26,9 +30,10 @@ int cull_method = CULL_BACKFACE;
 ///////////////////////////////////////////////////////////////////////////////
 bool is_running = false;
 int previous_frame_time = 0;
+float delta_time;
 
-vec3_t camera_position = { .x = 0, .y = 0, .z = 0 };
 mat4_t proj_matrix;
+mat4_t view_matrix;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Setup function to initialize variables and game objects
@@ -54,16 +59,19 @@ void setup(void) {
     // Initialize the perspective projection matrix
     float fov = 3.14159265358979323846 / 3.0; // the same as 180/3, or 60deg
     float aspect = (float)window_height / (float)window_width;
-    float znear = 0.1;
-    float zfar = 100.0;
-    proj_matrix = mat4_make_perspective(fov, aspect, znear, zfar);
+    float z_near = 0.1;
+    float z_far = 100.0;
+    proj_matrix = mat4_make_perspective(fov, aspect, z_near, z_far);
+
+    // Initialize frustum planes with a point and a normal
+    init_frustum_planes(fov, z_near, z_far);
 
     // Loads the vertex and face values for the mesh data structure
     // load_cube_mesh_data();
-    load_obj_file_data("./assets/crab.obj");
+    load_obj_file_data("./assets/cube.obj");
 
     // Load the texture information from an external PNG file
-    load_png_texture_data("./assets/crab.png");
+    load_png_texture_data("./assets/cube.png");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -93,8 +101,24 @@ void process_input(void) {
                 render_method = RENDER_TEXTURED_WIRE;
             if (event.key.keysym.sym == SDLK_c)
                 cull_method = CULL_BACKFACE;
-            if (event.key.keysym.sym == SDLK_d)
+            if (event.key.keysym.sym == SDLK_x)
                 cull_method = CULL_NONE;
+            if (event.key.keysym.sym == SDLK_UP)
+                camera.position.y += 3.0 * delta_time;
+            if (event.key.keysym.sym == SDLK_DOWN)
+                camera.position.y -= 3.0 * delta_time;
+            if (event.key.keysym.sym == SDLK_a)
+                camera.yaw -= 1.0 * delta_time;
+            if (event.key.keysym.sym == SDLK_d)
+                camera.yaw += 1.0 * delta_time;
+            if (event.key.keysym.sym == SDLK_w) {
+                camera.forward_velocity = vec3_mul(camera.direction, 5.0 * delta_time);
+                camera.position = vec3_add(camera.position, camera.forward_velocity);
+            }
+            if (event.key.keysym.sym == SDLK_s) {
+                camera.forward_velocity = vec3_mul(camera.direction, 5.0 * delta_time);
+                camera.position = vec3_sub(camera.position, camera.forward_velocity);
+            }
             break;
     }
 }
@@ -111,16 +135,32 @@ void update(void) {
         SDL_Delay(time_to_wait);
     }
 
+    // Get a delta time factor converted to seconds to be used to update our game objects
+    delta_time = (SDL_GetTicks() - previous_frame_time) / 1000.0;
+
     previous_frame_time = SDL_GetTicks();
 
-    // Initialize the array of triangles to render
-    triangles_to_render = NULL;
+    // Initialize the counter of triangles to render for the current frame
+    num_triangles_to_render = 0;
 
     // Change the mesh scale, rotation, and translation values per animation frame
-    mesh.rotation.x += 0.02;
-    mesh.rotation.y += 0.02;
-    mesh.rotation.z += 0.02;
+    // mesh.rotation.x += 0.02 * delta_time;
+    // mesh.rotation.y += 0.02 * delta_time;
+    // mesh.rotation.z += 0.02 * delta_time;
+    // mesh.translation.x += 1 * delta_time;
     mesh.translation.z = 5.0;
+
+    // Initialize the target looking at the positive z-axis
+    vec3_t target = { 0, 0, 1 };
+    mat4_t camera_yaw_rotation = mat4_make_rotation_y(camera.yaw);
+    camera.direction = vec3_from_vec4(mat4_mul_vec4(camera_yaw_rotation, vec4_from_vec3(target)));
+
+    // Offset the camera position in the direction where the camera is pointing at
+    target = vec3_add(camera.position, camera.direction);
+    vec3_t up_direction = { 0, 1, 0 };
+        
+    // Create the view matrix 
+    view_matrix = mat4_look_at(camera.position, target, up_direction);
 
     // Create scale, rotation, and translation matrices that will be used to multiply the mesh vertices
     mat4_t scale_matrix = mat4_make_scale(mesh.scale.x, mesh.scale.y, mesh.scale.z);
@@ -132,6 +172,8 @@ void update(void) {
     // Loop all triangle faces of our mesh
     int num_faces = array_length(mesh.faces);
     for (int i = 0; i < num_faces; i++) {
+        if (i != 4) continue;
+        
         face_t mesh_face = mesh.faces[i];
 
         vec3_t face_vertices[3];
@@ -158,6 +200,9 @@ void update(void) {
             // Multiply the world matrix by the original vector
             transformed_vertex = mat4_mul_vec4(world_matrix, transformed_vertex);
 
+            // Multiply the view matrix by the vector to transform the scene to camera space
+            transformed_vertex = mat4_mul_vec4(view_matrix, transformed_vertex);
+
             // Save transformed vertex in the array of transformed vertices
             transformed_vertices[j] = transformed_vertex;
         }
@@ -178,7 +223,8 @@ void update(void) {
         vec3_normalize(&normal);
 
         // Find the vector between vertex A in the triangle and the camera origin
-        vec3_t camera_ray = vec3_sub(camera_position, vector_a);
+        vec3_t origin = { 0, 0, 0 };
+        vec3_t camera_ray = vec3_sub(origin, vector_a);
 
         // Calculate how aligned the camera ray is with the face normal (using dot product)
         float dot_normal_camera = vec3_dot(normal, camera_ray);
@@ -191,6 +237,17 @@ void update(void) {
             }
         }
 
+        // Clipping baka
+        // Create a polygon from the original transformed triangle to be clipped
+        polygon_t polygon = create_polygon_from_triangle(
+            vec3_from_vec4(transformed_vertices[0]),
+            vec3_from_vec4(transformed_vertices[1]),
+            vec3_from_vec4(transformed_vertices[2])
+        );
+
+        // Clip the polygon and returns a new polygon with potential new vertices
+        clip_polygon(&polygon);
+        
         vec4_t projected_points[3];
 
         // Loop all three vertices to perform projection
@@ -210,9 +267,6 @@ void update(void) {
             projected_points[j].y += (window_height / 2.0);
         }
 
-        // Calculate the average depth for each face based on the vertices after transformation
-        float avg_depth = (transformed_vertices[0].z + transformed_vertices[1].z + transformed_vertices[2].z) / 3.0;
-
         // Calculate the shade intensity based on how aliged is the normal with the flipped light direction ray
         float light_intensity_factor = -vec3_dot(normal, light.direction);
 
@@ -231,23 +285,12 @@ void update(void) {
                 { mesh_face.c_uv.u, mesh_face.c_uv.v }
             },
             .color = triangle_color,
-            .avg_depth = avg_depth
         };
 
         // Save the projected triangle in the array of triangles to render
-        array_push(triangles_to_render, projected_triangle);
-    }
-
-    // Sort the triangles to render by their avg_depth
-    int num_triangles = array_length(triangles_to_render);
-    for (int i = 0; i < num_triangles; i++) {
-        for (int j = i; j < num_triangles; j++) {
-            if (triangles_to_render[i].avg_depth < triangles_to_render[j].avg_depth) {
-                // Swap the triangles positions in the array
-                triangle_t temp = triangles_to_render[i];
-                triangles_to_render[i] = triangles_to_render[j];
-                triangles_to_render[j] = temp;
-            }
+        if (num_triangles_to_render < MAX_TRIANGLES_PER_MESH) {
+            triangles_to_render[num_triangles_to_render] = projected_triangle;
+            num_triangles_to_render++;
         }
     }
 }
@@ -261,16 +304,15 @@ void render(void) {
     draw_grid();
 
     // Loop all projected triangles and render them
-    int num_triangles = array_length(triangles_to_render);
-    for (int i = 0; i < num_triangles; i++) {
+    for (int i = 0; i < num_triangles_to_render; i++) {
         triangle_t triangle = triangles_to_render[i];
 
         // Draw filled triangle
         if (render_method == RENDER_FILL_TRIANGLE || render_method == RENDER_FILL_TRIANGLE_WIRE) {
             draw_filled_triangle(
-                triangle.points[0].x, triangle.points[0].y, // vertex A
-                triangle.points[1].x, triangle.points[1].y, // vertex B
-                triangle.points[2].x, triangle.points[2].y, // vertex C
+                triangle.points[0].x, triangle.points[0].y, triangle.points[0].z, triangle.points[0].w,
+                triangle.points[1].x, triangle.points[1].y, triangle.points[1].z, triangle.points[1].w,
+                triangle.points[2].x, triangle.points[2].y, triangle.points[2].z, triangle.points[2].w,
                 triangle.color
             );
         }
@@ -302,9 +344,6 @@ void render(void) {
             draw_rect(triangle.points[2].x - 3, triangle.points[2].y - 3, 6, 6, 0xFFFF0000); // vertex C
         }
     }
-
-    // Clear the array of triangles to render every frame loop
-    array_free(triangles_to_render);
 
     render_color_buffer();
 
