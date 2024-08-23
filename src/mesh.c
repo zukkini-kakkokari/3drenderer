@@ -7,9 +7,24 @@
 static mesh_t meshes[MAX_NUM_MESHES];
 static int mesh_count = 0;
 
-void load_obj_file_data(char* filename) {
+int get_num_meshes(void) {
+    return mesh_count;
+}
+
+void load_mesh(char* obj_filename, char* png_filename, vec3_t scale, vec3_t translation, vec3_t rotation)  {
+    load_mesh_obj_data(&meshes[mesh_count], obj_filename);
+    load_mesh_png_data(&meshes[mesh_count], png_filename);
+
+    meshes[mesh_count].scale = scale;
+    meshes[mesh_count].translation = translation;
+    meshes[mesh_count].rotation = rotation;
+
+    mesh_count++;
+}
+
+void load_mesh_obj_data(mesh_t* mesh, char* obj_filename) {
     FILE* file;
-    file = fopen(filename, "r");
+    file = fopen(obj_filename, "r");
     char line[1024];
 
     tex2_t* texcoords = NULL;
@@ -19,7 +34,7 @@ void load_obj_file_data(char* filename) {
         if (strncmp(line, "v ", 2) == 0) {
             vec3_t vertex;
             sscanf(line, "v %f %f %f", &vertex.x, &vertex.y, &vertex.z);
-            array_push(mesh.vertices, vertex);
+            array_push(mesh->vertices, vertex);
         }
         // Texture coordinate information
         if (strncmp(line, "vt ", 3) == 0) {
@@ -47,9 +62,29 @@ void load_obj_file_data(char* filename) {
                 .c_uv = texcoords[texture_indices[2] - 1],
                 .color = 0xFFFFFFFF
             };
-            array_push(mesh.faces, face);
+            array_push(mesh->faces, face);
         }
     }
     array_free(texcoords);
     fclose(file);
+}
+
+void load_mesh_png_data(mesh_t* mesh, char* png_filename) {
+    upng_t* png_image = upng_new_from_file(png_filename);
+    if (png_image != NULL) {
+        upng_decode(png_image);
+        if (upng_get_error(png_image) == UPNG_EOK) {
+            mesh->texture = png_image;
+        }
+    }
+}
+
+mesh_t* get_mesh(int index) {
+    return &meshes[index];
+}
+
+void free_meshes(void) {
+    upng_free(mesh.texture);
+    array_free(mesh.faces);
+    array_free(mesh.vertices);
 }
